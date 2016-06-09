@@ -5,37 +5,37 @@ package com.medimob.data;
  */
 public final class Change {
 
-    /**
-     * Document change id.
-     * Type : {@link String}
-     */
-    public static final String DOCUMENT_ID = "docId";
+  /**
+   * Document change id.
+   * Type : {@link String}
+   */
+  public static final String DOCUMENT_ID = "docId";
 
-    /**
-     * Deleted flag.
-     * Type : {@link Boolean}
-     */
-    public static final String DELETE = "deleted";
+  /**
+   * Deleted flag.
+   * Type : {@link Boolean}
+   */
+  public static final String DELETE = "deleted";
 
-    /**
-     * Conflict flag.
-     * Type : {@link Boolean}
-     */
-    public static final String CONFLICT = "confict";
+  /**
+   * Conflict flag.
+   * Type : {@link Boolean}
+   */
+  public static final String CONFLICT = "confict";
 
-    /**
-     * Update flag.
-     * Type : {@link Boolean}
-     */
-    public static final String UPDATE = "update";
+  /**
+   * Update flag.
+   * Type : {@link Boolean}
+   */
+  public static final String UPDATE = "update";
 
-    /**
-     * Insert flag.
-     * Type : {@link Boolean}
-     */
-    public static final String INSERT = "insert";
+  /**
+   * Insert flag.
+   * Type : {@link Boolean}
+   */
+  public static final String INSERT = "insert";
 
-    private Change() {
-        throw new IllegalStateException("No instance !");
-    }
+  private Change() {
+    throw new IllegalStateException("No instance !");
+  }
 }

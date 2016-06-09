@@ -15,16 +15,25 @@ version = '1.0.0-SNAPSHOT'
 sourceCompatibility = 1.8
 
 dependencies {
-    compile 'io.vertx:vertx-core:3.2.1'
+    // Vert.x libraries.
+    compile 'io.vertx:vertx-core:3.3.0-SNAPSHOT'
     compile 'io.vertx:vertx-web:3.2.1'
-    compile 'io.vertx:vertx-mongo-client:3.2.1'
-    compile 'io.vertx:vertx-rx-java:3.2.1'
-
+    compile 'io.vertx:vertx-mongo-client:3.3.0-SNAPSHOT'
+    compile 'io.vertx:vertx-mongo-service:3.3.0-SNAPSHOT'
+    compile 'io.vertx:vertx-rx-java:3.3.0-SNAPSHOT'
+    // Json path
     compile 'com.flipkart.zjsonpatch:zjsonpatch:0.2.1'
-
+    // JSR-305
     compile 'com.google.code.findbugs:jsr305:3.0.1'
+    // Logger
+    compile 'org.slf4j:slf4j-api:1.7.21'
+    compile 'ch.qos.logback:logback-classic:1.0.13'
+
+
     // Test dependencies
     testCompile 'junit:junit:4.11'
+    testCompile 'io.vertx:vertx-mongo-embedded-db:3.3.0-SNAPSHOT'
+    testCompile 'io.vertx:vertx-unit:3.2.1'
 }
 
 mainClassName = 'com.medimob.Application'

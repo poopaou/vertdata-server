@@ -5,7 +5,7 @@ package com.medimob.data;
  */
 public class RevisionNotFound extends RuntimeException {
 
-    public RevisionNotFound(String message) {
-        super(message);
-    }
+  public RevisionNotFound(String message) {
+    super(message);
+  }
 }
