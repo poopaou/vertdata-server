@@ -75,11 +75,13 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
    * @return new revision
    */
   @Nonnull
-  private static JsonObject createNewRevision() {
-    return new JsonObject()
+  private Observable<String> beginRevision() {
+    JsonObject revision = new JsonObject()
         .put(Revision.DATE, Instant.now())
         .put(Revision.STATE, Revision.State.PENDING)
         .put(Revision.CHANGES, new JsonArray());
+
+    return doCreate(REVISIONS_CNAME, revision);
   }
 
   /**
@@ -112,13 +114,12 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
           String collection = body.getString("Collection");
           JsonObject document = body.getJsonObject("Document");
 
-          final JsonObject revision = createNewRevision();
-          doCreate(REVISIONS_CNAME, revision)
-              .concatMap(revId -> createDocument(collection, revId, document))
-              .concatMap(this::pushChangeToPendingRevision)
-              .concatMap(this::endRevisionPending)
-              .concatMap(this::findDoneRevision)
-              .map(this::toRevisionResponse)
+          beginRevision()
+              .flatMap((String revId) -> createDocument(collection, revId, document))
+              .flatMap(this::pushChangeToRevision)
+              .flatMap(this::endRevision)
+              .flatMap(this::findRevision)
+              .map(this::revisionToResponse)
               .subscribe(
                   msg::reply,
                   e -> {
@@ -138,13 +139,12 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
           String collection = body.getString("Collection");
           JsonObject document = body.getJsonObject("Document");
 
-          JsonObject revision = createNewRevision();
-          doCreate(REVISIONS_CNAME, revision)
-              .concatMap(revId -> updateDocument(revId, collection, document))
-              .concatMap(this::pushChangeToPendingRevision)
-              .concatMap(this::endRevisionPending)
-              .concatMap(this::findDoneRevision)
-              .map(this::toRevisionResponse)
+          beginRevision()
+              .flatMap(revId -> updateDocument(revId, collection, document))
+              .flatMap(this::pushChangeToRevision)
+              .flatMap(this::endRevision)
+              .flatMap(this::findRevision)
+              .map(this::revisionToResponse)
               .subscribe(
                   msg::reply,
                   e -> {
@@ -157,7 +157,6 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
         .toObservable()
         .subscribe(msg -> {
           JsonObject body = msg.body();
-
           assertHasValue(body, "Collection");
           assertHasValue(body, "DocumentId");
           assertHasValue(body, "RevisionId");
@@ -166,13 +165,12 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
           String documentId = body.getString("DocumentId");
           String deletedRevisionId = body.getString("RevisionId");
 
-          JsonObject revision = createNewRevision();
-          doCreate(REVISIONS_CNAME, revision)
+          beginRevision()
               .concatMap(revId -> deleteDocument(collection, documentId, revId, deletedRevisionId))
-              .concatMap(this::pushChangeToPendingRevision)
-              .concatMap(this::endRevisionPending)
-              .concatMap(this::findDoneRevision)
-              .map(this::toRevisionResponse)
+              .concatMap(this::pushChangeToRevision)
+              .concatMap(this::endRevision)
+              .concatMap(this::findRevision)
+              .map(this::revisionToResponse)
               .subscribe(
                   msg::reply,
                   e -> {
@@ -185,7 +183,6 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
         .toObservable()
         .subscribe(msg -> {
           JsonObject body = msg.body();
-
           assertHasValue(body, "Collection");
           assertHasValue(body, "DocumentId");
 
@@ -204,7 +201,7 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
     eventBus.<JsonObject>consumer(BULK).toObservable(); //TODO bulk.
   }
 
-  private JsonObject toRevisionResponse(@Nonnull JsonObject revision) {
+  private JsonObject revisionToResponse(@Nonnull JsonObject revision) {
     JsonObject flattenRevision;
     JsonArray changes = revision.getJsonArray(Revision.CHANGES);
     if (changes.size() == 1) {
@@ -273,26 +270,19 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
 
     String docId = document.getString(Document.ID);
     String targetRevId = document.getString(Document.REVISION_ID);
-    return doFindOne(
-        collection,
-        new JsonObject().put(Document.ID, docId),
-        null)
-        .first(result -> result != null)
-        .concatMap(srcDocument -> {
-          JsonObject revisionDocument = createDocumentForRevisionId(
-              srcDocument.getJsonArray(Document.CHANGES),
-              targetRevId
-          );
-          JsonArray diffs = createJsonDiffBetweenDocuments(revisionDocument, document);
+
+    return queryDocument(collection, docId, null)
+        .flatMap(srcDocument -> {
           Instant now = Instant.now();
+          JsonArray diffs = createJsonDiffBetweenDocuments(srcDocument, document);
           JsonObject change = buildDocumentDiff(workingRevId, now, diffs);
 
-          // Check if document has been deleted or if targetRevision is not the current document revision's.
           if (srcDocument.getBoolean(Document.DELETED, false) || !srcDocument.getString(
               Document.REVISION_ID).equals(targetRevId)) {
             change.put(DocChange.CONFLICT, targetRevId);
             return pushConflictToDocument(collection, docId, workingRevId, change);
-          } else {
+          }
+          else {
             // Build document change.
             return doUpdate(
                 collection,
@@ -300,16 +290,10 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
                     .put(Document.ID, docId)
                     .put(Document.REVISION_ID, targetRevId),
                 new JsonObject()
-                    .put(
-                        "$push",
-                        new JsonObject().put(Document.CHANGES, change)
-                    )
-                    .put(
-                        "$set",
-                        new JsonObject()
+                    .put("$push", new JsonObject().put(Document.CHANGES, change))
+                    .put("$set", new JsonObject()
                             .put(Document.UPDATE_DATE, now)
-                            .put(Document.REVISION_ID, workingRevId)
-                    )
+                            .put(Document.REVISION_ID, workingRevId))
             ).concatMap(result -> {
               if (result == 0L) {
                 change.put(DocChange.CONFLICT, targetRevId);
@@ -349,15 +333,10 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
                     .put(Document.REVISION_ID, revisionId)
             ))
         .single()
-        .map(result -> {
-          if (1L == result) {
-            return new JsonObject()
-                .put(Change.DOCUMENT_ID, documentId)
-                .put(Change.DELETE, true);
-          } else {
-            return null;
-          }
-        });
+        .map(result -> new JsonObject()
+            .put(Change.DOCUMENT_ID, documentId)
+            .put(Change.DELETE, 1L == result)
+        );
   }
 
   @Nonnull
@@ -433,7 +412,7 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
    * @return revision id observable.
    */
   @Nonnull
-  private Observable<String> pushChangeToPendingRevision(@Nonnull JsonObject changes) {
+  private Observable<String> pushChangeToRevision(@Nonnull JsonObject changes) {
     Objects.requireNonNull(changes, "missing change");
 
     return Observable.from(changes.fieldNames())
@@ -457,7 +436,7 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
    * @return revision id.
    */
   @Nonnull
-  public Observable<String> endRevisionPending(@Nonnull final String revisionId) {
+  public Observable<String> endRevision(@Nonnull final String revisionId) {
     Objects.requireNonNull(revisionId, "missing revisionId");
 
     ObservableFuture<UpdateResult> observable = RxHelper.observableFuture();
@@ -477,7 +456,7 @@ public class SyncDataService extends io.vertx.rxjava.core.AbstractVerticle {
    * @return the revision observable.
    */
   @Nonnull
-  public Observable<JsonObject> findDoneRevision(@Nonnull String revisionId) {
+  public Observable<JsonObject> findRevision(@Nonnull String revisionId) {
     Objects.requireNonNull(revisionId, "missing revisionId");
 
     JsonObject query = new JsonObject()

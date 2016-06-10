@@ -103,6 +103,10 @@ public class SyncDataServiceTest {
       context.assertEquals(true, result.getBoolean("insert", false));
       // End test.
       async.complete();
+    }).exceptionally(e -> {
+      context.fail();
+      async.complete();
+      return null;
     });
   }
 
@@ -124,6 +128,10 @@ public class SyncDataServiceTest {
       context.assertEquals(true, result.getBoolean("update", false));
       // End test.
       async.complete();
+    }).exceptionally(e -> {
+      context.fail();
+      async.complete();
+      return null;
     });
   }
 
@@ -143,7 +151,11 @@ public class SyncDataServiceTest {
           context.assertEquals("test", result.getString("test"));
           // End test.
           async.complete();
-        });
+        }).exceptionally(e -> {
+      context.fail();
+      async.complete();
+      return null;
+    });
   }
 
   @Test
@@ -151,7 +163,7 @@ public class SyncDataServiceTest {
     Async async = context.async();
     queryDocument("", null)
         .thenAccept(result -> {
-          context.assertTrue(false, "should not return values");
+          context.fail("should not return values");
           async.complete();
         })
         .exceptionally(e -> {
@@ -172,7 +184,7 @@ public class SyncDataServiceTest {
       if (result.succeeded()) {
         promise.complete(result.result().body());
       } else {
-        promise.cancel(true);
+        promise.completeExceptionally(result.cause());
       }
     });
     return promise;
